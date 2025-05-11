@@ -1,0 +1,7 @@
+listen_port: "8080"
+backends:
+  - http://localhost:9001
+  - http://localhost:9002
+rate_limit:
+  capacity: 10
+  refill_rate: 5
