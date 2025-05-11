@@ -1,34 +1,52 @@
 package server
 
 import (
+	"encoding/json"
 	"loadbalancer/internal/balancer"
-	"loadbalancer/internal/proxy"
 	"loadbalancer/internal/ratelimiter"
 	"loadbalancer/pkg/logger"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"time"
 )
 
 func StartHTTPServer(port string, rr *balancer.RoundRobin, rl *ratelimiter.Limiter) error {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := ratelimiter.GetIP(r)
-		if !rl.Allow(ip) {
-			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
-			logger.Log().Printf("Rate limit exceeded for IP %s", ip)
+	log := logger.Log()
+	log.Printf("Listening on port %s\n", port)
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		clientID := r.RemoteAddr
+
+		if !rl.AllowRequest(clientID) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"code":    429,
+				"message": "Rate limit exceeded",
+			})
 			return
 		}
 
-		target := rr.NextBackend()
-		proxy, err := proxy.NewReverseProxy(target)
+		backend := rr.GetNextBackend()
+		log.Printf("Proxying request from %s to %s\n", clientID, backend)
+
+		target, err := url.Parse(backend)
 		if err != nil {
-			http.Error(w, "Internal proxy error", http.StatusInternalServerError)
-			logger.Log().Printf("Proxy creation error: %v", err)
+			http.Error(w, "Invalid backend URL", http.StatusInternalServerError)
 			return
 		}
 
-		logger.Log().Printf("Proxying request from %s to %s", ip, target)
+		proxy := httputil.NewSingleHostReverseProxy(target)
 		proxy.ServeHTTP(w, r)
 	})
 
-	logger.Log().Printf("Listening on port %s", port)
-	return http.ListenAndServe(":"+port, handler)
+	server := &http.Server{
+		Addr:           ":" + port,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	return server.ListenAndServe()
 }

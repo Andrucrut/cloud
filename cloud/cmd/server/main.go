@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	cfg, err := config.LoadConfig("configs/config.yaml")
+	cfg, err := config.LoadConfig("/Users/andrey/GolandProjects/cloud/config/config.yaml")
 	if err != nil {
 		logger.Log().Fatal(err)
 	}

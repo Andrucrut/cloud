@@ -15,13 +15,11 @@ type Config struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	// Чтение файла конфигурации
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	var cfg Config
-	// Разбор YAML
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return nil, err
